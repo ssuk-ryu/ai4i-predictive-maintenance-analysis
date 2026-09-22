@@ -19,6 +19,7 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
 from sklearn.tree import DecisionTreeClassifier
 from sklearn.metrics import f1_score
+from sklearn.metrics import roc_auc_score, average_precision_score
 
 # ==========================================================================
 
@@ -824,3 +825,82 @@ logistic_probability = logistic_model.predict_proba(X_test)[:, 1]
 forest_probability = random_forest_model.predict_proba(X_test)[:, 1]
 
 # ================================================
+
+# 모델 성능평가 및 최종 모델 선정
+# 각 모델이 Test 데이터의 정상/고장을 예측하게 했다
+logistic_pred = logistic_model.predict(X_test)
+tree_pred = decision_tree_model.predict(X_test)
+forest_pred = random_forest_model.predict(X_test)
+print("Logistic Regression 예측 완료")
+print("Decision Tree 예측 완료")
+print("Random Forest 예측 완료")
+
+models_pred = {
+    "Logistic Regression": logistic_pred,
+    "Decision Tree": tree_pred,
+    "Random Forest": forest_pred,
+}
+for name, pred in models_pred.items():
+    tn, fp, fn, tp = confusion_matrix(y_test, pred).ravel()
+    print(f"\n{name}")
+    print("TN :", tn)
+    print("FP :", fp)
+    print("FN :", fn)
+    print("TP :", tp)
+
+줄바꿈()
+
+for name, pred in models_pred.items():
+    accuracy = accuracy_score(y_test, pred)
+precision = precision_score(y_test, pred, zero_division=0)
+recall = recall_score(y_test, pred)
+f1 = f1_score(y_test, pred)
+print(f"\n{name}")
+print("Accuracy :", round(accuracy, 4))
+print("Precision:", round(precision, 4))
+print("Recall :", round(recall, 4))
+print("F1-score :", round(f1, 4))
+
+줄바꿈()
+
+evaluation_results = []
+for name, pred in models_pred.items():
+    tn, fp, fn, tp = confusion_matrix(y_test, pred).ravel()
+    evaluation_results.append(
+        {
+            "Model": name,
+            "Accuracy": accuracy_score(y_test, pred),
+            "Precision": precision_score(y_test, pred, zero_division=0),
+            "Recall": recall_score(y_test, pred),
+            "F1": f1_score(y_test, pred),
+            "TN": tn,
+            "FP": fp,
+            "FN": fn,
+            "TP": tp,
+        }
+    )
+evaluation_df = pd.DataFrame(evaluation_results)
+print(evaluation_df.round(3))
+#                  Model  Accuracy  Precision  Recall     F1    TN  FP  FN  TP
+# 0  Logistic Regression     0.968      0.636   0.103  0.177  1928   4  61   7
+# 1        Decision Tree     0.978      0.687   0.676  0.681  1911  21  22  46
+# 2        Random Forest     0.981      0.895   0.500  0.642  1928   4  34  34
+
+줄바꿈()
+
+models = {
+    "Logistic Regression": logistic_model,
+    "Decision Tree": decision_tree_model,
+    "Random Forest": random_forest_model,
+}
+auc_results = []
+for name, model in models.items():
+    # 각 모델이 Test 데이터의 고장 확률을 계산했다
+    probability = model.predict_proba(X_test)[:, 1]
+
+    # ROC-AUC와 PR-AUC를 계산했다
+    roc_auc = roc_auc_score(y_test, probability)
+    pr_auc = average_precision_score(y_test, probability)
+    auc_results.append({"Model": name, "ROC-AUC": roc_auc, "PR-AUC": pr_auc})
+auc_df = pd.DataFrame(auc_results)
+print(auc_df.round(3))
