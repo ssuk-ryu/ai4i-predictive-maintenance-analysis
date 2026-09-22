@@ -5,14 +5,14 @@
 - 작업 완료 후 Pull Request를 통해 main에 병합한다.
 
 # Commit 메시지 작성 규칙
-feat: 기능 추가
-fix: 오류 수정
-docs: 문서 수정
-refactor: 코드 정리
+- feat: 기능 추가
+- fix: 오류 수정
+- docs: 문서 수정
+- refactor: 코드 정리
     # 예시
-    git commit -m "feat: 고장 유형 분류 모델 추가"
-    git commit -m "fix: 결측치 처리 오류 수정"
-    git commit -m "docs: README 프로젝트 설명 추가"
+    - git commit -m "feat: 고장 유형 분류 모델 추가"
+    - git commit -m "fix: 결측치 처리 오류 수정"
+    - git commit -m "docs: README 프로젝트 설명 추가"
 
 # 작업 규칙
 1. 작업 전 Issue 생성
