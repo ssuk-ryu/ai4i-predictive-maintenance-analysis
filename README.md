@@ -9,7 +9,7 @@
 - fix: 오류 수정
 - docs: 문서 수정
 - refactor: 코드 정리
-    # 예시
+    ## 예시
     - git commit -m "feat: 고장 유형 분류 모델 추가"
     - git commit -m "fix: 결측치 처리 오류 수정"
     - git commit -m "docs: README 프로젝트 설명 추가"
