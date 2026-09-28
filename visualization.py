@@ -1,17 +1,20 @@
 import matplotlib.pyplot as plt
 import pandas as pd
+import numpy as np
+from sklearn.metrics import confusion_matrix
 
-TARGET_COLS = ["TWF", "HDF", "PWF", "OSF", "RNF"]
+# ==================================================
+# 1. 클래스 불균형
+# ==================================================
 
 
-# 시각화 1
 def plot_class_imbalance(df):
+    targets = ["TWF", "HDF", "PWF", "OSF", "RNF"]
 
-    counts = df[TARGET_COLS].sum()
+    counts = df[targets].sum()
 
     plt.figure(figsize=(8, 5))
-
-    counts.plot(kind="bar")
+    plt.bar(counts.index, counts.values)
 
     plt.title("클래스 불균형")
     plt.xlabel("고장 유형")
@@ -21,9 +24,12 @@ def plot_class_imbalance(df):
     plt.show()
 
 
-# 시각화 2
-def plot_failure_boxplots(df):
+# ==================================================
+# 2. 고장 유형별 Boxplot
+# ==================================================
 
+
+def plot_failure_boxplots(df):
     configs = [
         ("TWF", "Tool wear [min]"),
         ("HDF", "Rotational speed [rpm]"),
@@ -34,24 +40,28 @@ def plot_failure_boxplots(df):
 
     for target, feature in configs:
 
-        normal = df.loc[df[target] == 0, feature]
+        non_failure = df.loc[df[target] == 0, feature]
 
         failure = df.loc[df[target] == 1, feature]
 
-        plt.figure(figsize=(6, 5))
+        plt.figure(figsize=(7, 5))
 
-        plt.boxplot([normal, failure], tick_labels=["비고장", target])
+        plt.boxplot([non_failure, failure], tick_labels=[f"비{target}", target])
 
         plt.title("고장 유형별 Boxplot")
+        plt.xlabel(target)
         plt.ylabel(feature)
 
         plt.tight_layout()
         plt.show()
 
 
-# 시각화 3
-def plot_pwf_scatter(df):
+# ==================================================
+# 3. PWF Rotational speed × Torque
+# ==================================================
 
+
+def plot_pwf_scatter(df):
     normal = df[df["PWF"] == 0]
     failure = df[df["PWF"] == 1]
 
@@ -64,10 +74,17 @@ def plot_pwf_scatter(df):
         label="비PWF",
     )
 
-    plt.scatter(failure["Rotational speed [rpm]"], failure["Torque [Nm]"], label="PWF")
+    plt.scatter(
+        failure["Rotational speed [rpm]"],
+        failure["Torque [Nm]"],
+        alpha=0.8,
+        label="PWF",
+    )
 
     plt.title("Rotational speed × Torque 산점도")
+
     plt.xlabel("Rotational speed [rpm]")
+
     plt.ylabel("Torque [Nm]")
 
     plt.legend()
@@ -75,9 +92,12 @@ def plot_pwf_scatter(df):
     plt.show()
 
 
-# 시각화 4
-def plot_engineered_features(df):
+# ==================================================
+# 4. 파생변수 분포
+# ==================================================
 
+
+def plot_engineered_features(df):
     configs = [
         ("HDF", "Temperature difference [K]"),
         ("PWF", "Power [W]"),
@@ -86,164 +106,281 @@ def plot_engineered_features(df):
 
     for target, feature in configs:
 
-        normal = df.loc[df[target] == 0, feature]
+        non_failure = df.loc[df[target] == 0, feature]
 
         failure = df.loc[df[target] == 1, feature]
 
-        plt.figure(figsize=(6, 5))
+        plt.figure(figsize=(7, 5))
 
-        plt.boxplot([normal, failure], tick_labels=[f"비{target}", target])
+        plt.boxplot([non_failure, failure], tick_labels=[f"비{target}", target])
 
         plt.title("파생변수 분포")
+        plt.xlabel(target)
         plt.ylabel(feature)
 
         plt.tight_layout()
         plt.show()
 
 
-# 시각화 5
-def plot_model_comparison(zscore_result, rf_result):
+# ==================================================
+# 5. Z-score / Dummy / RF 비교
+# 교수 피드백 반영
+# ==================================================
 
-    merged = pd.merge(
-        zscore_result[["Failure type", "F1"]],
-        rf_result[["Failure type", "F1"]],
-        on="Failure type",
-        suffixes=("_Zscore", "_RF"),
-    )
 
-    merged = merged.set_index("Failure type")
+def plot_model_comparison(zscore_result, dummy_result, rf_result):
+    targets = rf_result["Failure Type"].tolist()
 
-    merged.plot(kind="bar", figsize=(8, 5))
+    zscore_f1 = zscore_result["F1"].values
 
-    plt.title("Z-score vs Random Forest F1-score")
+    dummy_f1 = dummy_result["F1"].values
+
+    rf_f1 = rf_result["F1"].values
+
+    x = np.arange(len(targets))
+    width = 0.25
+
+    plt.figure(figsize=(9, 5))
+
+    plt.bar(x - width, zscore_f1, width, label="Z-score")
+
+    plt.bar(x, dummy_f1, width, label="Dummy")
+
+    plt.bar(x + width, rf_f1, width, label="Random Forest")
+
+    plt.xticks(x, targets)
+
+    plt.ylim(0, 1.1)
+
     plt.xlabel("고장 유형")
     plt.ylabel("F1-score")
 
-    plt.xticks(rotation=0)
+    plt.title("Baseline vs Random Forest F1-score")
+
+    plt.legend()
+
     plt.tight_layout()
     plt.show()
 
 
-# 시각화 6
-def plot_confusion_matrices(rf_result):
+# ==================================================
+# 6. 원본 Feature vs 파생변수 추가
+# 교수 피드백 반영
+# ==================================================
 
-    for _, row in rf_result.iterrows():
 
-        matrix = [[row["TN"], row["FP"]], [row["FN"], row["TP"]]]
+def plot_feature_engineering_comparison(feature_compare):
+    targets = feature_compare["Failure Type"].tolist()
 
-        fig, ax = plt.subplots(figsize=(5, 4))
+    raw = feature_compare["Raw F1"].values
 
-        image = ax.imshow(matrix)
+    engineered = feature_compare["Engineered F1"].values
+
+    x = np.arange(len(targets))
+    width = 0.35
+
+    plt.figure(figsize=(9, 5))
+
+    plt.bar(x - width / 2, raw, width, label="원본 Feature")
+
+    plt.bar(x + width / 2, engineered, width, label="파생변수 추가")
+
+    plt.xticks(x, targets)
+
+    plt.ylim(0, 1.1)
+
+    plt.xlabel("고장 유형")
+    plt.ylabel("F1-score")
+
+    plt.title("파생변수 추가 전후 F1-score")
+
+    plt.legend()
+
+    plt.tight_layout()
+    plt.show()
+
+
+# ==================================================
+# 7. Confusion Matrix
+# ==================================================
+
+
+def plot_confusion_matrices(y_test, predictions):
+    for target in y_test.columns:
+
+        cm = confusion_matrix(y_test[target], predictions[target], labels=[0, 1])
+
+        plt.figure(figsize=(5, 4))
+
+        plt.imshow(cm)
+
+        plt.title(f"Confusion Matrix - {target}")
+
+        plt.xlabel("Predicted")
+        plt.ylabel("Actual")
+
+        plt.xticks([0, 1], ["0", "1"])
+
+        plt.yticks([0, 1], ["0", "1"])
 
         for i in range(2):
             for j in range(2):
-                ax.text(j, i, int(matrix[i][j]), ha="center", va="center")
+                plt.text(j, i, cm[i, j], ha="center", va="center")
 
-        ax.set_xticks([0, 1])
-        ax.set_yticks([0, 1])
-
-        ax.set_xticklabels(["정상 예측", "고장 예측"])
-
-        ax.set_yticklabels(["실제 정상", "실제 고장"])
-
-        plt.title("Confusion Matrix")
-
-        plt.colorbar(image)
         plt.tight_layout()
         plt.show()
 
 
-# 시각화 7
-def plot_feature_importance(importance_result, top_n=8):
+# ==================================================
+# 8. Feature Importance
+# HDF / PWF / OSF
+# ==================================================
 
-    for target in ["HDF", "PWF", "OSF"]:
 
-        importance = importance_result[target].head(top_n).sort_values("Importance")
+def plot_feature_importance(importance_results):
+    for target, importance in importance_results.items():
+
+        data = importance.head(8)
 
         plt.figure(figsize=(8, 5))
 
-        plt.barh(importance["Feature"], importance["Importance"])
+        plt.barh(data["Feature"], data["Importance"])
 
-        plt.title("Feature Importance")
+        plt.gca().invert_yaxis()
+
         plt.xlabel("Importance")
+
+        plt.title(f"Feature Importance - {target}")
 
         plt.tight_layout()
         plt.show()
 
 
-# 시각화 8
+# ==================================================
+# 9. HDF 오류 사례
+# 새 Test 데이터 기준으로 자동 탐색
+# ==================================================
+
+
 def plot_hdf_errors(df, X_test, y_test, predictions):
+    hdf_pred = pd.Series(predictions["HDF"], index=y_test.index)
 
-    test_data = df.loc[X_test.index].copy()
+    fp_index = y_test.index[(y_test["HDF"] == 0) & (hdf_pred == 1)]
 
-    test_data["Actual HDF"] = y_test["HDF"]
-
-    test_data["Predicted HDF"] = predictions["HDF"]
-
-    normal = test_data[test_data["Actual HDF"] == 0]
-
-    hdf = test_data[test_data["Actual HDF"] == 1]
-
-    fp = test_data[(test_data["Actual HDF"] == 0) & (test_data["Predicted HDF"] == 1)]
-
-    fn = test_data[(test_data["Actual HDF"] == 1) & (test_data["Predicted HDF"] == 0)]
+    fn_index = y_test.index[(y_test["HDF"] == 1) & (hdf_pred == 0)]
 
     plt.figure(figsize=(8, 6))
 
+    non_hdf = df.loc[y_test.index[y_test["HDF"] == 0]]
+
+    hdf = df.loc[y_test.index[y_test["HDF"] == 1]]
+
     plt.scatter(
-        normal["Temperature difference [K]"],
-        normal["Rotational speed [rpm]"],
-        alpha=0.2,
+        non_hdf["Temperature difference [K]"],
+        non_hdf["Rotational speed [rpm]"],
+        alpha=0.3,
         label="비HDF",
     )
 
     plt.scatter(
-        hdf["Temperature difference [K]"], hdf["Rotational speed [rpm]"], label="HDF"
+        hdf["Temperature difference [K]"],
+        hdf["Rotational speed [rpm]"],
+        alpha=0.8,
+        label="HDF",
     )
 
-    plt.scatter(
-        fp["Temperature difference [K]"],
-        fp["Rotational speed [rpm]"],
-        marker="X",
-        s=150,
-        label="FP",
-    )
+    if len(fp_index) > 0:
+        plt.scatter(
+            df.loc[fp_index, "Temperature difference [K]"],
+            df.loc[fp_index, "Rotational speed [rpm]"],
+            marker="X",
+            s=150,
+            label="FP",
+        )
 
-    plt.scatter(
-        fn["Temperature difference [K]"],
-        fn["Rotational speed [rpm]"],
-        marker="*",
-        s=180,
-        label="FN",
-    )
+    if len(fn_index) > 0:
+        plt.scatter(
+            df.loc[fn_index, "Temperature difference [K]"],
+            df.loc[fn_index, "Rotational speed [rpm]"],
+            marker="*",
+            s=180,
+            label="FN",
+        )
 
-    plt.title("HDF 오류 사례 산점도")
     plt.xlabel("Temperature difference [K]")
+
     plt.ylabel("Rotational speed [rpm]")
 
+    plt.title("HDF 오류 사례 산점도")
+
     plt.legend()
+
     plt.tight_layout()
     plt.show()
 
 
-# 시각화 9
-def plot_threshold_cost(cost_result, cost_ratios):
+# ==================================================
+# 10. TWF Validation Threshold 성능
+# 새로 추가
+# ==================================================
 
+
+def plot_threshold_performance(threshold_result):
     plt.figure(figsize=(8, 5))
 
-    for ratio in cost_ratios:
+    plt.plot(
+        threshold_result["Threshold"],
+        threshold_result["Precision"],
+        marker="o",
+        label="Precision",
+    )
 
-        plt.plot(
-            cost_result["Threshold"],
-            cost_result[f"Cost_FN_{ratio}"],
-            marker="o",
-            label=f"FN 비용 {ratio}배",
-        )
+    plt.plot(
+        threshold_result["Threshold"],
+        threshold_result["Recall"],
+        marker="o",
+        label="Recall",
+    )
 
-    plt.title("비용 민감도 그래프")
+    plt.plot(
+        threshold_result["Threshold"], threshold_result["F1"], marker="o", label="F1"
+    )
+
     plt.xlabel("Threshold")
-    plt.ylabel("Normalized Cost")
+    plt.ylabel("Score")
+
+    plt.ylim(0, 1)
+
+    plt.title("TWF Validation Threshold별 성능")
 
     plt.legend()
+
+    plt.tight_layout()
+    plt.show()
+
+
+# ==================================================
+# 11. 비용 민감도
+# Validation 데이터 기준
+# ==================================================
+
+
+def plot_threshold_cost(cost_result):
+    plt.figure(figsize=(8, 5))
+
+    for ratio in sorted(cost_result["FN Cost Ratio"].unique()):
+        data = cost_result[cost_result["FN Cost Ratio"] == ratio]
+
+        plt.plot(
+            data["Threshold"], data["Cost"], marker="o", label=f"FN 비용 {ratio}배"
+        )
+
+    plt.xlabel("Threshold")
+    plt.ylabel("상대 비용")
+
+    plt.title("비용 민감도 그래프")
+
+    plt.legend()
+
     plt.tight_layout()
     plt.show()

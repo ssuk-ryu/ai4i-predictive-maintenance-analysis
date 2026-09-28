@@ -1,19 +1,22 @@
 import pandas as pd
+import numpy as np
 
 from sklearn.ensemble import RandomForestClassifier
+from sklearn.dummy import DummyClassifier
+
 from sklearn.metrics import precision_score, recall_score, f1_score, confusion_matrix
 
 from feature_utils import add_features
 
-TARGET_COLS = ["TWF", "HDF", "PWF", "OSF", "RNF"]
+# --------------------------------------------------
+# Random Forest 학습
+# --------------------------------------------------
 
 
 def train_random_forest(X_train, y_train):
-
     models = {}
 
-    for target in TARGET_COLS:
-
+    for target in y_train.columns:
         model = RandomForestClassifier(
             n_estimators=100, random_state=42, class_weight="balanced"
         )
@@ -25,16 +28,28 @@ def train_random_forest(X_train, y_train):
     return models
 
 
-def evaluate_models(models, X_test, y_test, threshold=0.5):
+# --------------------------------------------------
+# Random Forest 평가
+# --------------------------------------------------
 
+
+def evaluate_models(models, X_test, y_test, threshold=0.5):
     rows = []
+
     predictions = {}
     probabilities = {}
 
-    for target, model in models.items():
+    for target in y_test.columns:
+        model = models[target]
 
-        proba = model.predict_proba(X_test)[:, 1]
-        pred = (proba >= threshold).astype(int)
+        probability = model.predict_proba(X_test)[:, 1]
+
+        pred = (probability >= threshold).astype(int)
+
+        predictions[target] = pred
+        probabilities[target] = probability
+
+        tn, fp, fn, tp = confusion_matrix(y_test[target], pred, labels=[0, 1]).ravel()
 
         precision = precision_score(y_test[target], pred, zero_division=0)
 
@@ -42,23 +57,22 @@ def evaluate_models(models, X_test, y_test, threshold=0.5):
 
         f1 = f1_score(y_test[target], pred, zero_division=0)
 
-        tn, fp, fn, tp = confusion_matrix(y_test[target], pred, labels=[0, 1]).ravel()
-
         rows.append([target, precision, recall, f1, tn, fp, fn, tp])
-
-        predictions[target] = pred
-        probabilities[target] = proba
 
     result = pd.DataFrame(
         rows,
-        columns=["Failure type", "Precision", "Recall", "F1", "TN", "FP", "FN", "TP"],
+        columns=["Failure Type", "Precision", "Recall", "F1", "TN", "FP", "FN", "TP"],
     )
 
-    return result, predictions, probabilities
+    return (result, predictions, probabilities)
 
 
-def zscore_baseline(X_train, X_test, y_train, y_test):
+# --------------------------------------------------
+# 기존 Z-score Baseline
+# --------------------------------------------------
 
+
+def zscore_baseline(X_train, X_test, y_train, y_test, threshold=3):
     feature_map = {
         "TWF": ["Tool wear [min]"],
         "HDF": ["Temperature difference [K]", "Rotational speed [rpm]"],
@@ -78,19 +92,18 @@ def zscore_baseline(X_train, X_test, y_train, y_test):
 
     rows = []
 
-    for target in TARGET_COLS:
-
+    for target in y_train.columns:
         features = feature_map[target]
-        # X_train에서 '정상 데이터의 센서값만'가져오기 위해
-        # y_train을 조건으로 씀
+
+        # 해당 고장 유형이 발생하지 않은 Train 데이터
         normal_train = X_train.loc[y_train[target] == 0, features]
 
         mean = normal_train.mean()
-        std = normal_train.std().replace(0, 1)
+        std = normal_train.std()
 
-        z = abs((X_test[features] - mean) / std)
+        z = ((X_test[features] - mean) / std).abs()
 
-        pred = (z >= 3).any(axis=1).astype(int)
+        pred = (z >= threshold).any(axis=1).astype(int)
 
         precision = precision_score(y_test[target], pred, zero_division=0)
 
@@ -100,46 +113,133 @@ def zscore_baseline(X_train, X_test, y_train, y_test):
 
         rows.append([target, precision, recall, f1])
 
-    return pd.DataFrame(rows, columns=["Failure type", "Precision", "Recall", "F1"])
+    result = pd.DataFrame(rows, columns=["Failure Type", "Precision", "Recall", "F1"])
+
+    return result
 
 
-def get_feature_importance(models, X_train):
+# --------------------------------------------------
+# 교수 피드백 추가
+# Dummy Classifier Baseline
+# --------------------------------------------------
+
+
+def dummy_baseline(X_train, X_test, y_train, y_test):
+    rows = []
+
+    for target in y_train.columns:
+        model = DummyClassifier(strategy="most_frequent")
+
+        model.fit(X_train, y_train[target])
+
+        pred = model.predict(X_test)
+
+        precision = precision_score(y_test[target], pred, zero_division=0)
+
+        recall = recall_score(y_test[target], pred, zero_division=0)
+
+        f1 = f1_score(y_test[target], pred, zero_division=0)
+
+        rows.append([target, precision, recall, f1])
+
+    result = pd.DataFrame(rows, columns=["Failure Type", "Precision", "Recall", "F1"])
+
+    return result
+
+
+# --------------------------------------------------
+# 교수 피드백 추가
+# 원본 Feature RF vs 파생변수 추가 RF
+# --------------------------------------------------
+
+
+def compare_feature_engineering(
+    X_train_raw, X_test_raw, X_train_feature, X_test_feature, y_train, y_test
+):
+    rows = []
+
+    for target in y_train.columns:
+
+        # 원본 Feature만 사용
+        raw_model = RandomForestClassifier(
+            n_estimators=100, random_state=42, class_weight="balanced"
+        )
+
+        raw_model.fit(X_train_raw, y_train[target])
+
+        raw_pred = raw_model.predict(X_test_raw)
+
+        raw_f1 = f1_score(y_test[target], raw_pred, zero_division=0)
+
+        # 파생변수 포함
+        feature_model = RandomForestClassifier(
+            n_estimators=100, random_state=42, class_weight="balanced"
+        )
+
+        feature_model.fit(X_train_feature, y_train[target])
+
+        feature_pred = feature_model.predict(X_test_feature)
+
+        feature_f1 = f1_score(y_test[target], feature_pred, zero_division=0)
+
+        rows.append([target, raw_f1, feature_f1, feature_f1 - raw_f1])
+
+    result = pd.DataFrame(
+        rows, columns=["Failure Type", "Raw F1", "Engineered F1", "F1 Change"]
+    )
+
+    return result
+
+
+# --------------------------------------------------
+# Feature Importance
+# --------------------------------------------------
+
+
+def get_feature_importance(models, feature_columns):
+    results = {}
+
+    # 실제 판별 성능이 확보된 고장 유형만 해석
+    for target in ["HDF", "PWF", "OSF"]:
+        model = models[target]
+
+        importance = pd.DataFrame(
+            {"Feature": feature_columns, "Importance": model.feature_importances_}
+        )
+
+        importance = importance.sort_values("Importance", ascending=False)
+
+        results[target] = importance
+
+    return results
+
+
+# --------------------------------------------------
+# 새로운 데이터의 고장 유형 판별
+# --------------------------------------------------
+
+
+def predict_failure_type(new_data, models, thresholds, feature_columns):
+    data = add_features(new_data)
+
+    data = pd.get_dummies(data, columns=["Type"])
+
+    data = data.reindex(columns=feature_columns, fill_value=0)
 
     result = {}
 
     for target, model in models.items():
 
-        importance = pd.DataFrame(
-            {"Feature": X_train.columns, "Importance": model.feature_importances_}
-        )
+        probability = model.predict_proba(data)[:, 1]
 
-        importance = importance.sort_values("Importance", ascending=False)
+        threshold = thresholds.get(target, 0.5)
 
-        result[target] = importance
+        warning = (probability >= threshold).astype(int)
 
-    return result
+        result[target] = {
+            "Probability": probability[0],
+            "Threshold": threshold,
+            "Warning": warning[0],
+        }
 
-
-def predict_failure_type(new_data, models, thresholds, feature_columns):
-
-    data = add_features(new_data)
-
-    data = pd.get_dummies(data, columns=["Type"], dtype=int)
-
-    data = data.reindex(columns=feature_columns, fill_value=0)
-
-    rows = []
-
-    for target, model in models.items():
-
-        probability = model.predict_proba(data)[:, 1][0]
-
-        threshold = thresholds[target]
-
-        warning = int(probability >= threshold)
-
-        rows.append([target, probability, threshold, warning])
-
-    return pd.DataFrame(
-        rows, columns=["Failure type", "Probability", "Threshold", "Warning"]
-    )
+    return pd.DataFrame(result).T
